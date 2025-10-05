@@ -92,12 +92,12 @@ THIRD_TARGET_STATUS_NAME = "Discharging Personnel"
 FOURTH_TARGET_STATUS_NAME = "Exempted Personnel"
 FIFTH_TARGET_STATUS_NAME = "Assistant Researcher"
 
-# Get project and statuses (user stories use story statuses)
+
 project = api.projects.get_by_slug(PROJECT_SLUG)
 story_statuses = project.list_user_story_statuses()
 ot.success("Step 3 complete - Successfully found the project")
 
-# Find target column/status by name
+
 def get_target_status(TARGET_STATUS_VAR):
     target_status = next((s for s in story_statuses if s.name == TARGET_STATUS_VAR), None)
     if not target_status:
@@ -105,13 +105,12 @@ def get_target_status(TARGET_STATUS_VAR):
     else:
         return target_status
 
-# Build a map of Custom Field IDs to names for this project
+
 cf_definitions = api.user_story_attributes.list(project=project.id)
 cf_id_to_name = {str(cf.id): cf.name for cf in cf_definitions}
 
 ot.success("Step 4 complete - Successfully found the target column and identified general custom attributes")
 
-# Get user stories in the desired column
 def get_stories_in_column(TARGET_STATUS_VAR):
     stories_in_column = [
         story for story in api.user_stories.list(project=project.id)
@@ -136,19 +135,16 @@ def update_custom_field(user_story, cf_definitions, target_name, new_value_name)
 
         ot.success(f"Found custom field: '{cf.name}' (ID: {cf.id})")
 
-        # Get current value of the custom field
         current_value = get_custom_attribute_value(user_story, cf_definitions, target_name)
         if current_value and str(current_value).lower() == str(new_value_name).lower():
             ot.info(f"Field '{cf.name}' is already set to '{current_value}'. Skipping update.")
             return True
 
 
-        # Parse options
         options_raw = cf.extra.get("choices") if isinstance(cf.extra, dict) else cf.extra
         if not isinstance(options_raw, list):
             ot.warn(f"Custom field '{cf.name}' has no valid options format.")
             nooptions = True
-            #return False
 
         ot.info(f"Checking if given option is valid")
         if not nooptions:
@@ -156,7 +152,6 @@ def update_custom_field(user_story, cf_definitions, target_name, new_value_name)
             for opt in options_raw:
                 option_name = opt["name"] if isinstance(opt, dict) else opt
 
-                # Check match (case-insensitive)
                 if option_name.lower() == new_value_name.lower():
                     matched = True
                     ot.success("Match found")
@@ -165,7 +160,6 @@ def update_custom_field(user_story, cf_definitions, target_name, new_value_name)
                 ot.error(f"The value '{new_value_name}' does not match any valid options for '{cf.name}'.")
                 return False
 
-        # 🔄 Re-fetch the most up-to-date version of the story
         latest_story = api.user_stories.get(user_story.id)
         
         if get_custom_attribute_value(user_story, cf_definitions, "Activity") == "Inactivity Notice":
@@ -174,7 +168,6 @@ def update_custom_field(user_story, cf_definitions, target_name, new_value_name)
             custom_field_id = str(cf.id)
             latest_story.set_attribute(custom_field_id, new_value_name, 1)
 
-        # 🔁 Confirm
         verified = api.user_stories.get(user_story.id)
         verified_values = verified.get_attributes().get("attributes_values", {})
         confirmed = verified_values.get(str(cf.id), "N/A")
@@ -262,9 +255,6 @@ def add_isolated_status(story, status):
     
 def isolated_task_change(mode, story, task_name, reqinput):
     try:
-        # ren renames the task
-        # del deletes the task
-        # sta changes the status of the task
         match mode:
             case "ren":
                 task_id = get_task_id_by_name(story, task_name)
@@ -358,23 +348,13 @@ def isolated_task_change(mode, story, task_name, reqinput):
         return False
 
 def get_task_id_by_name(story, task_name):
-    """
-    Return the ID of a task with a given name under a specific user story.
-    Uses the global `api` and `project` variables.
-    
-    :param story: The user story object (or anything with .id)
-    :param task_name: The subject (name) of the task to find
-    :return: Task ID (int) or None if not found
-    """
     try:
-        # Fetch all tasks for this user story
         tasks = api.tasks.list(project=project.id, user_story=story.id)
 
         for task in tasks:
             if task.subject and task.subject.lower() == task_name.lower():
                 return task.id
 
-        # Nothing matched
         return None
 
     except Exception as e:
@@ -435,12 +415,10 @@ def isolated_tag_change(mode, story, name):
     match mode:
         case "add":
             try:
-                # 1. Fetch latest story
                 latest = api.user_stories.get(story.id)
                 version = latest.version
-                existing_tags = latest.tags or []  # list of [name, color]
+                existing_tags = latest.tags or []
 
-                # 2. Fetch project's tag definitions to find the color
                 project_info = api.projects.get(project.id)
                 project_tags = project_info.tags or []
                 color = ""
@@ -449,12 +427,10 @@ def isolated_tag_change(mode, story, name):
                         color = t[1] if t[1] is not None else ""
                         break
 
-                # 3. If already present, skip
                 if any(t[0].lower() == name.lower() for t in existing_tags):
                     ot.success(f"Tag '{name}' already present.")
                     return True
 
-                # 4. Add new tag
                 new_tag = [name, color]
                 updated_tags = existing_tags + [new_tag]
 
@@ -488,15 +464,12 @@ def isolated_tag_change(mode, story, name):
                 return False
         case "rem":
             try:
-                # 1. Fetch latest story
                 latest = api.user_stories.get(story.id)
                 version = latest.version
-                existing_tags = latest.tags or []  # list of [name, color]
+                existing_tags = latest.tags or []
 
-                # 2. Filter out the tag
                 updated_tags = [t for t in existing_tags if t[0].lower() != name.lower()]
 
-                # 3. If nothing changed, skip
                 if len(updated_tags) == len(existing_tags):
                     ot.success(f"Tag '{name}' not present.")
                     return True
@@ -533,78 +506,18 @@ def isolated_tag_change(mode, story, name):
             ot.error("Invalid mode for isolated tag function.")
             return False
 
-    
-'''    
-def add_isolated_user(project, email):
-    print("[ INFO ] Trying to add iso user")
-    try:
-        projectid = project.id
-        roles = api.roles.list(project=project.id)
-        target_role = next((r for r in roles if r.name.lower() == "ard personnel"), None)
-
-        if not target_role:
-            print("[ FAIL ] Couldn't find the targeted role.")
-            return False
-
-        headers = {
-            "Authorization": f"Bearer {api.token}",
-            "Content-Type": "application/json"
-        }
-
-        data = {
-            "project_id": projectid,
-            "bulk_membership": [{"role_id": target_role, "username": email}]
-        }
-
-        url = f"{TAIGA_URL}/memberships/bulk_create"
-
-        response = requests.patch(
-            url,
-            headers=headers,
-            data=json.dumps(data)
-        )
-
-        if response.status_code in (200, 201):
-            print("[  OK  ] Successfully added isolated user.")
-            return True
-        else:
-            print(f"[ FAIL ] Failed to add user. Status: {response.status_code}, Body: {response.text}")
-            return False
-
-    except Exception as e:
-        print(f"[ FAIL ] Exception occurred while posting isolated comment: {e}")
-        return False
-'''
-
-def add_isolated_user(project, user_id, role_id):
-    ot.info("Adding user to project")
-    try:
-        api.memberships.create(
-            project=project.id,
-            user=user_id,
-            role=role_id
-        )
-        ot.success("Successfully added user to project.")
-        return True
-    except Exception as e:
-        ot.error(f"Exception occurred while adding user: {e}")
-        return False
-
 def get_custom_attribute_value(user_story, cf_definitions, target_name): 
     try:
         target_name = target_name.strip().lower()
 
-        # Find the custom field definition by name
         cf = next((c for c in cf_definitions if c.name.lower() == target_name), None)
         if not cf:
             ot.error(f"Custom field '{target_name}' not found in definitions.")
             return None
 
-        # Get the field ID (as string) and look it up in the user story's custom attributes
         custom_field_id = str(cf.id)
         current_values = user_story.get_attributes().get("attributes_values", {})
 
-        # Return the current value for that custom field
         current_value = current_values.get(custom_field_id)
         return current_value
 
@@ -649,10 +562,8 @@ def strike_to_number(strike):
 def process_user(story, user_input, PR_Result, Actual_Activity):
         try:
             try:
-                # Convert string to date object
                 input_date = datetime.strptime(user_input, "%Y-%m-%d").date()
 
-                # Add 7 days
                 new_date = input_date + timedelta(days=7)
             except ValueError:
                 ot.warn("Invalid date format. Please use YYYY-MM-DD.")
@@ -691,8 +602,6 @@ def process_user(story, user_input, PR_Result, Actual_Activity):
         except Exception as ex:
             ot.error(f"Unexpected exception: {ex}")
         return False
-
-# START OF BOT SHENANINGANS
 
 @bot.event
 async def on_ready():
@@ -773,11 +682,9 @@ async def parse_quota(interaction: discord.Interaction, date_string: str):
             else:
                 taiga_mismatches.append(story_name)
 
-        # Anything left in library after this pass = Google mismatch
         for leftover in library:
             google_mismatches.append(leftover[0])
 
-        # If no Google mismatches remain, stop early
         if not google_mismatches:
             break
 
@@ -856,7 +763,6 @@ class CardInfoModal(discord.ui.Modal):
             elif line.startswith("http") and "discord.com/channels" in line:
                 security_link = line
 
-        # Fill the HTML description
         description_html = f"""<b>User Profile</b>
 ----------------
 
@@ -934,69 +840,6 @@ No Inactivity Notices.<br>
 async def create_card(interaction: discord.Interaction):
     await interaction.response.send_modal(CardInfoModal())
 
-# ------------------------------ HEAVELY WORK IN PROGRESS ------------------------------
-
-@tree.command(name="add_member", description="Add a member to the Taiga project by email.")
-@app_commands.describe(email="The email of the Taiga user to add")
-async def add_member(interaction: discord.Interaction, email: str):
-    await interaction.response.defer(ephemeral=True)  # respond immediately
-    print("[ INFO ] Started function")
-
-    try:
-        # 1️⃣ Lookup user by email in a background thread
-        print("[ INFO ] Looking up user")
-        user_matches = await asyncio.to_thread(api.users.list)
-        print("[ INFO ] Found")
-        if not user_matches:
-            await interaction.followup.send(
-                f"[ FAIL ] No Taiga account found with email: {email}. Check for typos.",
-                ephemeral=True
-            )
-            return
-
-        print("[ INFO ] Found Email")
-        user = user_matches[0]
-
-        # 2️⃣ Check if already a member
-        print("[ INFO ] Checking if already member")
-        memberships = await asyncio.to_thread(api.memberships.list, project=project.id)
-        print("[ INFO ] Found")
-        if any(m.user == user.id for m in memberships):
-            await interaction.followup.send(
-                f"[ INFO ] {user.full_name_display} ({email}) is already a member of the project.",
-                ephemeral=True
-            )
-            return
-
-        print("[ INFO ] Checked if already member")
-        # 3️⃣ Get "ARD Personnel" role
-        print("[ INFO ] Getting role")
-        roles = await asyncio.to_thread(api.roles.list, project=project.id)
-        print("[ INFO ] Found")
-        target_role = next((r for r in roles if r.name.lower() == "ard personnel"), None)
-
-        if not target_role:
-            await interaction.followup.send(
-                "[ FAIL ] Role 'ARD Personnel' not found in project roles.",
-                ephemeral=True
-            )
-            return
-
-        # 4️⃣ Add the user
-        print("[ INFO ] Adding iso user")
-        await asyncio.to_thread(add_isolated_user, project, user.id, target_role.id)
-        print("[ INFO ] Done")
-
-        await interaction.followup.send(
-            f"[  OK  ] {user.full_name_display} ({email}) has been added to the project as 'ARD Personnel'.",
-            ephemeral=True
-        )
-
-    except Exception as e:
-        await interaction.followup.send(
-            f"[ FAIL ] Could not add member: {e}",
-            ephemeral=True
-        )
 
 @tree.command(name="promote", description="promote a user on taiga")
 @app_commands.describe(name="Insert the name of the target card.")
@@ -1082,8 +925,8 @@ async def parse_quota(interaction: discord.Interaction, name: str):
 
 
 
-# END OF BOT SHENANIGANS
 if __name__ == "__main__":
+
 
 
     bot.run(TOKEN)
